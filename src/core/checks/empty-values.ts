@@ -1,7 +1,8 @@
+import { showKey } from '../key-label.js'
 import type { Issue } from '../types.js'
 import type { Check } from './context.js'
 
-/** A key exists but its value is empty or only whitespace. Checked in every locale. */
+// Checked in every locale, the base included
 export const emptyValues: Check = ({ base, targets }) => {
   const issues: Issue[] = []
 
@@ -17,7 +18,7 @@ export const emptyValues: Check = ({ base, targets }) => {
         key,
         line: entry.line,
         column: entry.column,
-        message: `Empty value for \`${key}\``,
+        message: `Empty value for ${showKey(key)}`,
         baseValue: locale === base ? undefined : base.entries.get(key)?.value,
         isNew: true
       })

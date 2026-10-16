@@ -1,8 +1,10 @@
+import { wordCount } from '../formats/message.js'
+import { showKey } from '../key-label.js'
 import { languageOf } from '../locale-code.js'
 import type { Entry, Issue, Locale } from '../types.js'
 import { type Check, type CheckContext, baseEntryFor } from './context.js'
 
-/** Languages written in a script other than Latin, with the letters of that script. */
+// Non-Latin scripts and their letters
 const SCRIPTS: Record<string, { name: string; letters: RegExp }> = {
   ar: { name: 'Arabic', letters: /\p{Script=Arabic}/u },
   fa: { name: 'Persian', letters: /\p{Script=Arabic}/u },
@@ -35,21 +37,17 @@ const SCRIPTS: Record<string, { name: string; letters: RegExp }> = {
 
 const URL_OR_EMAIL = /\b(?:https?:\/\/\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.-]+)/g
 const LETTER = /\p{L}/u
-/** Letters plus combining marks, so Hindi or vowelled Arabic words stay whole; "E-mail" is one word. */
-const WORD = /[\p{L}\p{M}]+(?:[-'’][\p{L}\p{M}]+)*/gu
-/** Words that carry meaning, so date formats like "H:mm:ss" are not counted as text. */
+// e.g. comments.xlsx, usually the same in every language
+const FILE_NAME =
+  /^[^\s/\\]+\.(?:csv|docx?|gif|jpe?g|json|pdf|png|pptx?|svg|txt|webp|xlsx?|xml|zip)$/i
+// Skips date formats like "H:mm:ss"
 const LONG_WORD = /[\p{L}\p{M}]{3,}/gu
 
-/**
- * Languages close enough that whole sentences are often written the same way
- * ("Generar Factura" in Spanish and Catalan), or that share characters
- * ("API Key 管理" in Chinese and Japanese). Values shared inside a group are
- * not reported by the cross-locale rule.
- */
+// Close languages that often share whole sentences or characters
 const RELATED_LANGUAGES = [
   ['zh', 'ja'],
   ['no', 'nb', 'nn', 'da'],
-  ['es', 'ca', 'gl', 'pt', 'ast'],
+  ['es', 'ca', 'gl', 'pt', 'ast', 'it'],
   ['tr', 'az'],
   ['sr', 'hr', 'bs', 'sh', 'cnr'],
   ['cs', 'sk'],
@@ -60,21 +58,9 @@ const RELATED_LANGUAGES = [
   ['nl', 'af']
 ]
 
-/** A pair of locales must share at least this many different values to be reported. */
 const MIN_SHARED_VALUES = 2
 
-/**
- * Text that was probably never translated.
- *  - identical to the base value, with at least two words (skipped between
- *    variants of one language, e.g. en and en-GB)
- *  - for non-Latin languages, no letter of that language's script at all
- *  - identical in two other locales, e.g. Turkish text pasted into the
- *    French file (see `sharedValues`)
- *
- * Single words are left out of the identical rules: on a real project most of
- * them were brands or words that are the same in both languages ("Total",
- * "Chat", "Premium"). Brand names in non-Latin locales belong in `ignore-values`.
- */
+// Same as the base, no letter of the locale's script, or copied between locales
 export const untranslated: Check = (context) => [
   ...perValue(context),
   ...sharedValues(context)
@@ -94,19 +80,23 @@ const perValue: Check = (context) => {
       const baseEntry = baseEntryFor(context, key)
       const value = entry.value.trim()
       if (!baseEntry || !value || ignored.has(value.toLowerCase())) continue
+      if (FILE_NAME.test(value)) continue
 
       const text = visibleText(describe, entry.value)
       if (text === undefined || !LETTER.test(text)) continue
 
+      // Plurals count one branch: `ticket | tickets` is one word
+      const shown =
+        describe(entry.value).longestText?.replace(URL_OR_EMAIL, ' ') ?? text
       let message: string | undefined
       if (
         language !== baseLanguage &&
         value === baseEntry.value.trim() &&
-        wordCount(text) >= 2
+        wordCount(shown) >= 2
       ) {
-        message = `\`${key}\`: same text as ${base.code}`
+        message = `${showKey(key)}: same text as ${base.code}`
       } else if (script && !script.letters.test(text)) {
-        message = `\`${key}\`: no ${script.name} letters, looks untranslated`
+        message = `${showKey(key)}: no ${script.name} letters, looks untranslated`
       }
       if (!message) continue
 
@@ -128,17 +118,7 @@ const perValue: Check = (context) => {
   return issues
 }
 
-/**
- * Two locales of unrelated languages that hold the same text for the same keys,
- * while the base says something else: one file was copied into the other. A
- * real project had 22 Turkish values in its French file.
- *
- * One issue per pair of locales, with the keys as details, because it is one
- * mistake. It is attached to the first locale of the pair by name, since the
- * tool cannot tell which file is the wrong one. The message and key leave out
- * the count and the keys, so the issue stays "existing" when a pull
- * request translates some of the values.
- */
+// One issue per locale pair, without counts, so partial fixes keep it existing
 const sharedValues: Check = ({ base, targets, describe, ignoreValues }) => {
   const ignored = ignoredSet(ignoreValues)
   const issues: Issue[] = []
@@ -178,7 +158,7 @@ const sharedValues: Check = ({ base, targets, describe, ignoreValues }) => {
         column: entry.column,
         message: `${first.code} and ${second.code} have identical values, so one file was probably copied into the other`,
         details: shared.map(
-          (key) => `\`${key}\`: ${first.entries.get(key)?.value.trim()}`
+          (key) => `${showKey(key)}: ${first.entries.get(key)?.value.trim()}`
         ),
         isNew: true
       })
@@ -199,17 +179,13 @@ function related(a: string, b: string): boolean {
   )
 }
 
-/** The text a user reads, without placeholders, URLs or emails; undefined if the message is broken. */
+// Undefined when the message is broken
 function visibleText(
   describe: CheckContext['describe'],
   value: string
 ): string | undefined {
   const info = describe(value)
   return info.error ? undefined : info.text.replace(URL_OR_EMAIL, ' ')
-}
-
-function wordCount(text: string, pattern = WORD): number {
-  return text.match(pattern)?.length ?? 0
 }
 
 function ignoredSet(values: string[]): Set<string> {

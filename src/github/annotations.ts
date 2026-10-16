@@ -1,15 +1,11 @@
 import * as core from '@actions/core'
 import type { Issue } from '../core/types.js'
 
-/**
- * GitHub shows at most 10 error and 10 warning annotations per step, so new
- * issues come first and the rest are counted in a single notice.
- */
+// GitHub shows 10 per severity per step, so new issues go first
 export const ANNOTATIONS_PER_SEVERITY = 10
 
 type Sink = Pick<typeof core, 'error' | 'warning' | 'notice'>
 
-/** Marks issues on their line in the "Files changed" tab. */
 export function annotate(
   issues: Issue[],
   baseLocale: string,
@@ -41,7 +37,10 @@ export function annotate(
 }
 
 function message(issue: Issue, baseLocale: string): string {
-  const plain = issue.message.replace(/`/g, '')
+  const plain = [issue.message, issue.hint]
+    .filter(Boolean)
+    .join('. ')
+    .replace(/`/g, '')
   return issue.baseValue !== undefined
     ? `${plain}\n${baseLocale}: ${issue.baseValue}`
     : plain

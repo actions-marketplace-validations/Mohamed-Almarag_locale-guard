@@ -1,22 +1,35 @@
-/** An ICU `plural` or `selectordinal` argument. */
 export interface PluralInfo {
   argument: string
   ordinal: boolean
-  /** Option keys as written, e.g. `one`, `other`, `=0`. */
+  // As written: `one`, `other`, `=0`
   options: string[]
 }
 
-/** What a check needs to know about one translated message, in any format. */
 export interface MessageInfo {
-  /** Placeholders as the user writes them: `{name}`, `{0}`, `<link>`, `@:common.save`. Sorted, unique. */
+  // As written (`{name}`, `<link>`, `@:common.save`), sorted and unique
   placeholders: string[]
-  /** Keys referenced with vue-i18n linked messages (`@:common.save`). */
+  // Keys of vue-i18n linked messages
   linkedKeys: string[]
   plurals: PluralInfo[]
-  /** The literal text only, without placeholders or syntax. */
+  // Without placeholders or syntax
   text: string
-  /** Set when the message cannot be parsed. */
+  // The longest branch of a plural or select: `ticket | tickets` is one word
+  longestText?: string
   error?: string
+}
+
+// Letters with marks, so Hindi or vowelled Arabic stays whole; "E-mail" is one word
+export const WORD = /[\p{L}\p{M}]+(?:[-'’][\p{L}\p{M}]+)*/gu
+
+export function wordCount(text: string, pattern = WORD): number {
+  return text.match(pattern)?.length ?? 0
+}
+
+export function mostWords(texts: string[]): string {
+  return texts.reduce(
+    (best, text) => (wordCount(text) > wordCount(best) ? text : best),
+    ''
+  )
 }
 
 export function finalize(

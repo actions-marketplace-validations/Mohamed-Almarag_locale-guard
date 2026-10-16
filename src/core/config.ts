@@ -17,11 +17,7 @@ const CHECK_IDS = [
   'plural-forms'
 ] as const
 
-/**
- * The `format` setting names the library that reads the messages. Libraries
- * that share a message syntax share a format: react-intl writes ICU messages
- * just like next-intl, and react-i18next writes plain JSON.
- */
+// Libraries that share a message syntax share a format
 export const FORMATS = {
   'vue-i18n': 'vue-i18n',
   '@nuxtjs/i18n': 'vue-i18n',
@@ -37,10 +33,7 @@ export const FORMATS = {
   'i18next-vue': 'json'
 } as const satisfies Record<string, Format>
 
-/**
- * A framework can use more than one library, and each writes messages its own
- * way, so a framework name is answered with the libraries to choose from.
- */
+// A framework name is answered with the libraries it can use
 const FRAMEWORKS: Record<string, string> = {
   nuxt: '@nuxtjs/i18n',
   vue: 'vue-i18n or i18next-vue',
@@ -56,6 +49,16 @@ const list = z
       .map((item) => item.trim())
       .filter(Boolean)
   )
+
+// A line can hold commas ("Visa, Mastercard, Amex"), so it is kept whole and split
+const valueList = z
+  .union([z.array(z.string()), z.string()])
+  .transform((value) => {
+    const values = Array.isArray(value)
+      ? value
+      : value.split('\n').flatMap((line) => [line, ...line.split(',')])
+    return [...new Set(values.map((item) => item.trim()).filter(Boolean))]
+  })
 
 const flag = z.union([z.boolean(), z.stringbool()])
 
@@ -81,11 +84,12 @@ export const configSchema = z.strictObject({
     }),
   'fail-on': z.enum(['error', 'warning', 'never']).default('error'),
   'fail-on-existing': flag.default(false),
+  'check-when': z.enum(['locale-changes', 'always']).default('locale-changes'),
   comment: flag.default(true),
   annotations: flag.default(true),
   'ignore-keys': list.default([]),
   'ignore-locales': list.default([]),
-  'ignore-values': list.default([]),
+  'ignore-values': valueList.default([]),
   'disable-checks': list.pipe(z.array(z.enum(CHECK_IDS))).default([])
 })
 
@@ -99,10 +103,7 @@ export interface ConfigFile {
   values: Record<string, unknown>
 }
 
-/**
- * Validates the settings and fills in defaults. Settings come from the
- * optional config file and from action inputs; an input that was set wins.
- */
+// An input that was set wins over the config file
 export function parseConfig(
   inputs: Record<string, unknown>,
   file?: ConfigFile
@@ -144,7 +145,7 @@ export function parseConfig(
   }
 }
 
-/** Reads `.localeguard.yml`. Returns an error message when it is not a YAML map. */
+// Returns an error message when the file is not a YAML map
 export function readConfigFile(
   path: string,
   text: string

@@ -9,6 +9,7 @@
 # expected from the build.
 name: Check Transpiled JavaScript
 
+# main only: dist/ is rebuilt once per release, not on every branch merged into dev.
 on:
   pull_request:
     branches:
@@ -32,7 +33,7 @@ jobs:
 
       - name: Setup Node.js
         id: setup-node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm

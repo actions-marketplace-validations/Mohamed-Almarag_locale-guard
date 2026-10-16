@@ -55,6 +55,49 @@ describe('untranslated', () => {
     ])
   })
 
+  it('counts the words of one plural branch, so a single word in two forms is left out', async () => {
+    const values = {
+      one: 'ticket | tickets',
+      two: 'open ticket | open tickets',
+      icu: '{count, plural, one {# ticket} other {# tickets}}'
+    }
+    const vueIssues = await run(
+      'untranslated',
+      {
+        'locales/en.json': json({ one: values.one, two: values.two }),
+        'locales/fr.json': json({ one: values.one, two: values.two }),
+        'locales/ar.json': json({ one: values.one, two: 'تذكرة | تذاكر' })
+      },
+      vue
+    )
+    expect(summarize(vueIssues)).toEqual([
+      'ar one:2 `one`: no Arabic letters, looks untranslated',
+      'fr two:3 `two`: same text as en'
+    ])
+
+    const icuIssues = await run(
+      'untranslated',
+      {
+        'locales/en.json': json({ icu: values.icu }),
+        'locales/fr.json': json({ icu: values.icu })
+      },
+      icu
+    )
+    expect(icuIssues).toEqual([])
+  })
+
+  it('leaves values that are only a file name, like an export file', async () => {
+    const issues = await run('untranslated', {
+      'locales/en.json': json({ file: 'comments.xlsx', text: 'comments xlsx' }),
+      'locales/ar.json': json({ file: 'comments.xlsx', text: 'comments xlsx' }),
+      'locales/fr.json': json({ file: 'comments.xlsx', text: 'comments xlsx' })
+    })
+    expect(summarize(issues)).toEqual([
+      'ar text:3 `text`: same text as en',
+      'fr text:3 `text`: same text as en'
+    ])
+  })
+
   it('does not compare variants of the same language', async () => {
     const issues = await run(
       'untranslated',
@@ -230,6 +273,44 @@ describe('untranslated: values shared by two locales', () => {
       })
     })
     expect(issues).toEqual([])
+  })
+
+  it('does not compare Italian with Spanish or Portuguese, which share short phrases', async () => {
+    const issues = await run('untranslated', {
+      'locales/en.json': json({
+        person: 'A person',
+        name: 'Full name',
+        size: 'Extra large'
+      }),
+      'locales/es.json': json({
+        person: 'Una persona',
+        name: 'Nombre completo',
+        size: 'Extra grande'
+      }),
+      'locales/it.json': json({
+        person: 'Una persona',
+        name: 'Nome completo',
+        size: 'Extra grande'
+      }),
+      'locales/pt.json': json({
+        person: 'Uma pessoa',
+        name: 'Nome completo',
+        size: 'Extra grande'
+      })
+    })
+    expect(issues).toEqual([])
+  })
+
+  it('still reports Italian text copied into an unrelated language', async () => {
+    const italian = { person: 'Una persona', size: 'Extra grande' }
+    const issues = await run('untranslated', {
+      'locales/en.json': json({ person: 'A person', size: 'Extra large' }),
+      'locales/it.json': json(italian),
+      'locales/tr.json': json(italian)
+    })
+    expect(summarize(issues)).toEqual([
+      'it locales/it.json:2 it and tr have identical values, so one file was probably copied into the other'
+    ])
   })
 
   it('does not compare Chinese and Japanese, which share characters', async () => {

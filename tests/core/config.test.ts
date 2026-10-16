@@ -17,6 +17,7 @@ describe('parseConfig', () => {
           files: ['locales/{locale}.json'],
           'fail-on': 'error',
           'fail-on-existing': false,
+          'check-when': 'locale-changes',
           comment: true,
           annotations: true,
           'ignore-keys': [],
@@ -42,6 +43,44 @@ describe('parseConfig', () => {
     expect(result.ok && result.config['ignore-keys']).toEqual([
       'legacy.*',
       'admin.**'
+    ])
+  })
+
+  it('keeps an ignore-values line whole, so a value can contain commas', () => {
+    const result = parseConfig({
+      files: 'locales/{locale}.json',
+      'ignore-values': 'Visa, Mastercard, Amex\nPayPal'
+    })
+    expect(result.ok && result.config['ignore-values']).toEqual([
+      'Visa, Mastercard, Amex',
+      'Visa',
+      'Mastercard',
+      'Amex',
+      'PayPal'
+    ])
+  })
+
+  it('does not split ignore-values written as a YAML list', () => {
+    const result = parseConfig(
+      {},
+      file({
+        files: ['locales/{locale}.json'],
+        'ignore-values': ['Visa, Mastercard, Amex', 'PayPal']
+      })
+    )
+    expect(result.ok && result.config['ignore-values']).toEqual([
+      'Visa, Mastercard, Amex',
+      'PayPal'
+    ])
+  })
+
+  it('rejects an unknown check-when value', () => {
+    const result = parseConfig({
+      files: 'locales/{locale}.json',
+      'check-when': 'sometimes'
+    })
+    expect(!result.ok && result.errors).toEqual([
+      'Invalid "check-when": expected one of locale-changes, always (got "sometimes")'
     ])
   })
 

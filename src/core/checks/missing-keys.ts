@@ -1,3 +1,4 @@
+import { showKey } from '../key-label.js'
 import type { Entry, Issue, Locale } from '../types.js'
 import {
   type Check,
@@ -8,14 +9,7 @@ import {
 } from './context.js'
 import { baseKeyFor, keyFor, neededForms } from './suffix-plurals.js'
 
-/**
- * A key exists in the base locale but not in another locale.
- *
- * An i18next plural group counts as one message: when a locale has some of its
- * forms, the plural-forms check says which are missing. When it has none, the
- * missing keys are the forms that locale needs (six for Arabic, one for
- * Japanese), not the base's forms.
- */
+// An i18next plural group with no forms needs the forms of the locale, not the base
 export const missingKeys: Check = (context) => {
   const { base, targets, plurals } = context
   const issues: Issue[] = []
@@ -66,7 +60,7 @@ function missing(
     key,
     line: anchor.line,
     column: anchor.column,
-    message: `Missing key \`${key}\``,
+    message: `Missing key ${showKey(key)}`,
     baseValue: baseEntry.value,
     isNew: true
   }

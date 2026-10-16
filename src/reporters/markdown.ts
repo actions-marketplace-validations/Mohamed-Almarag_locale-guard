@@ -1,27 +1,21 @@
 import { stringify as toYaml } from 'yaml'
 import { namespaceOf } from '../core/checks/context.js'
+import { showKey } from '../core/key-label.js'
 import { PLURAL_CATEGORIES } from '../core/plural-rules.js'
 import type { CheckId, Issue, Locale, Project } from '../core/types.js'
 
-/** Hidden marker that identifies the Locale Guard comment on a pull request. */
 export const MARKER = '<!-- locale-guard -->'
 
 export interface ReportInput {
   issues: Issue[]
   project: Project
-  /** Whether issues were split into new and existing. */
   hasBaseline: boolean
-  /** Builds a link to a line in the repo, when one is available. */
   link?: (file: string, line?: number) => string | undefined
-  /** Longest allowed output. Issues past it are replaced by a pointer to the job summary. */
+  // Issues past it point to the job summary
   maxLength?: number
   summaryUrl?: string
-  /**
-   * How to show issues that existed before the pull request: every issue (job
-   * summary), or a count per locale and check (PR comment, which stays small
-   * on projects with many old issues).
-   */
-  existing?: 'list' | 'counts'
+  // list: collapsed, open: listed open, counts: one row per locale and check
+  existing?: 'list' | 'open' | 'counts'
 }
 
 const LABELS: Record<CheckId, [singular: string, plural: string]> = {
@@ -49,7 +43,8 @@ export function renderReport(input: ReportInput): string {
 
   let body = `${MARKER}\n${title(fresh, existing)}\n`
   if (input.hasBaseline && input.issues.length > 0) {
-    body += `\nNew in this PR: ${fresh.length} · Already existing: ${existing.length}${existing.length ? ' (collapsed below)' : ''}\n`
+    const where = input.existing === 'open' ? 'listed below' : 'collapsed below'
+    body += `\nNew in this PR: ${fresh.length} · Already existing: ${existing.length}${existing.length ? ` (${where})` : ''}\n`
   }
 
   let omitted = 0
@@ -62,7 +57,8 @@ export function renderReport(input: ReportInput): string {
   if (existing.length > 0 && input.existing === 'counts') {
     body += `\n${existingCounts(existing, input.summaryUrl)}`
   } else if (existing.length > 0) {
-    let details = `\n<details><summary>${count(existing.length, 'existing issue', 'existing issues')}</summary>\n`
+    const open = input.existing === 'open' ? ' open' : ''
+    let details = `\n<details${open}><summary>${count(existing.length, 'existing issue', 'existing issues')}</summary>\n`
     for (const group of groupIssues(existing)) {
       const section = `\n${renderGroup(group, input, '####')}`
       if (body.length + details.length + section.length > limit) {
@@ -73,7 +69,7 @@ export function renderReport(input: ReportInput): string {
   }
 
   if (omitted > 0) {
-    // Without a summary link this is the job summary itself, which has nowhere else to point.
+    // Without a summary link, this is the job summary itself
     const rest = input.summaryUrl
       ? `, see the [job summary](${input.summaryUrl})`
       : ' not shown, because this page reached its size limit'
@@ -114,7 +110,7 @@ function title(fresh: Issue[], existing: Issue[]): string {
 interface Group {
   severity: Issue['severity']
   locale: string
-  /** More than one when the same keys are missing in several locales. */
+  // Several when the same keys are missing in more than one locale
   locales: string[]
   check: CheckId
   issues: Issue[]
@@ -142,11 +138,7 @@ function groupIssues(issues: Issue[]): Group[] {
   )
 }
 
-/**
- * A new key added to the base locale is usually missing in every other locale
- * at once. Instead of repeating the same table for each locale, locales that
- * miss exactly the same keys share one section.
- */
+// Locales that miss exactly the same keys share one section
 function mergeMissingKeys(groups: Group[]): Group[] {
   const merged: Group[] = []
   const bySignature = new Map<string, Group>()
@@ -197,7 +189,8 @@ function renderGroup(
   } else {
     for (const issue of group.issues) {
       const where = location(issue, input)
-      out += `- ${issue.message}${where ? ` · ${where}` : ''}\n`
+      const hint = issue.hint ? `. ${issue.hint}` : ''
+      out += `- ${issue.message}${hint}${where ? ` · ${where}` : ''}\n`
       if (issue.details?.length) {
         const lines = issue.details.map((line) => `  - ${cell(line)}`)
         out += `  <details><summary>${count(issue.details.length, 'key', 'keys')}</summary>\n\n${lines.join('\n')}\n\n  </details>\n`
@@ -207,7 +200,7 @@ function renderGroup(
   return out
 }
 
-/** One table for keys that are missing in several locales, linked to the base file. */
+// Links point to the base file
 function renderSharedMissingKeys(
   group: Group,
   input: ReportInput,
@@ -224,7 +217,7 @@ function renderSharedMissingKeys(
   for (const issue of first) {
     const entry = base?.entries.get(issue.key)
     const url = entry ? input.link?.(entry.file, entry.line) : undefined
-    const key = `\`${issue.key}\``
+    const key = showKey(issue.key)
     out += `| ${url ? `[${key}](${url})` : key} | ${cell(issue.baseValue ?? '')} |\n`
   }
 
@@ -239,7 +232,7 @@ function renderSharedMissingKeys(
   return out
 }
 
-/** `locales/ar/common.json` becomes `locales/{locale}/common.json`. */
+// `locales/ar/common.json` -> `locales/{locale}/common.json`
 function withLocalePlaceholder(path: string, locale: string): string {
   return path
     .split('/')
@@ -260,15 +253,10 @@ function location(issue: Issue, input: ReportInput): string {
   return url ? `[${label}](${url})` : label
 }
 
-/**
- * A missing key links to its parent object in the locale file, where it should
- * be added. When the locale has no such parent (a flat key, a new group, or a
- * namespace file the locale never got), the link would only reach the top of a
- * file, so it points to the key in the base file instead.
- */
+// Links to the parent object in the locale file, or to the base key when it has none
 function missingKeyLink(issue: Issue, input: ReportInput): string {
   const { project } = input
-  const label = `\`${issue.key}\``
+  const label = showKey(issue.key)
   const target = project.locales.get(issue.locale)
   const inTarget =
     target?.files.some((file) => file.path === issue.file) &&
@@ -281,7 +269,7 @@ function missingKeyLink(issue: Issue, input: ReportInput): string {
   return url ? `[${label}](${url})` : label
 }
 
-/** Whether an object that contains the key exists in the locale, below its namespace. */
+// Only parents inside the key's namespace count
 function hasParent(locale: Locale, key: string): boolean {
   const namespace = namespaceOf(locale, key)
   const parts = key.split('.')
@@ -293,7 +281,7 @@ function hasParent(locale: Locale, key: string): boolean {
   return false
 }
 
-/** The base entry of a key, or of its `other` form for a plural form the base lacks. */
+// Falls back to the `other` form for a plural form the base lacks
 function baseEntryOf(base: Locale | undefined, key: string) {
   return (
     base?.entries.get(key) ??
@@ -301,7 +289,6 @@ function baseEntryOf(base: Locale | undefined, key: string) {
   )
 }
 
-/** Ready-to-paste nested object with the missing keys and empty values, one block per file. */
 function copyPaste(issues: Issue[], project: Project): string {
   let out = ''
   for (const [file, fileIssues] of byFile(issues)) {
@@ -326,11 +313,7 @@ function copyPasteBlock(
   return `\n<details><summary>📋 ${summary}</summary>\n\n\`\`\`${yaml ? 'yaml' : 'json'}\n${code}\n\`\`\`\n</details>\n`
 }
 
-/**
- * A key as written inside its file, without the file's namespace. Keys the base
- * lacks (an i18next plural form only Arabic needs) take the namespace off the
- * same way.
- */
+// The key without its file's namespace
 function keyInFile(base: Locale | undefined, key: string): string {
   const entry = base?.entries.get(key)
   if (entry) return entry.fileKey
@@ -338,13 +321,7 @@ function keyInFile(base: Locale | undefined, key: string): string {
   return namespace ? key.slice(namespace.length + 1) : key
 }
 
-/**
- * A key's segments as the base file writes them, so a flat file
- * (`"cart.title": ""`, as react-intl expects) gets a flat key back. A key the
- * base lacks (an i18next plural form only Arabic needs) is shaped like the
- * base key that shares the longest parent with it: `cart.items_few` next to
- * `cart.items_other`.
- */
+// Segments as the base file writes them, so a flat file gets flat keys back
 function pathInFile(base: Locale | undefined, key: string): string[] {
   const entry = base?.entries.get(key)
   if (entry) return entry.filePath
@@ -394,6 +371,7 @@ function cell(value: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/\\/g, '\\\\')
     .replace(/\|/g, '\\|')
     .replace(/\r?\n/g, '<br>')
 }

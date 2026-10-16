@@ -155,6 +155,16 @@ describe('renderReport', () => {
     )
   })
 
+  it('adds the suggested key after an extra key', async () => {
+    const body = await report({
+      'locales/en.json': json({ services: { name: 'Name' } }),
+      'locales/tr.json': json({ service: { name: 'Ad' } })
+    })
+    expect(body).toContain(
+      '- Key `service.name` does not exist in en. Did you mean `services.name`? · [tr.json:3](https://x/locales/tr.json#L3)'
+    )
+  })
+
   it('splits new and existing issues and collapses the existing ones', async () => {
     const body = await report(
       {
@@ -297,5 +307,24 @@ describe('renderReport', () => {
       'locales/ar.json': json({})
     })
     expect(body).toContain('| A \\| B<br>C |')
+  })
+
+  it('escapes a backslash so it cannot cancel the escaped pipe', async () => {
+    const body = await report({
+      'locales/en.json': json({ a: 'A \\| B' }),
+      'locales/ar.json': json({})
+    })
+    expect(body).toContain('| A \\\\\\| B |')
+  })
+
+  it('names a space in a missing key in the table and keeps it in the copy-paste block', async () => {
+    const body = await report({
+      'locales/en.json': json({ deals: { 'attitude ': 'Attitude' } }),
+      'locales/ar.json': json({})
+    })
+    expect(body).toContain(
+      '| [`deals.attitude ` (with a space at the end)](https://x/locales/en.json#L3) | Attitude |'
+    )
+    expect(body).toContain('"attitude ": ""')
   })
 })
